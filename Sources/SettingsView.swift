@@ -326,7 +326,7 @@ struct SettingsView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
-            Text("Легковесный и быстрый автоматический переключатель раскладки для macOS, вдохновленный Caramba Switcher.")
+            Text("Легковесный и быстрый автоматический переключатель раскладки для macOS.")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
