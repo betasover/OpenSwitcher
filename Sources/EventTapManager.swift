@@ -34,6 +34,10 @@ final class EventTapManager {
     private var lastShiftReleaseTime: Date?
     private var watchdogTimer: Timer?
     
+    // Fn / Globe key tracking
+    private var fnPressTime: Date?
+    private var fnHasChord: Bool = false
+    
     private init() {
         // Reset typing buffer when frontmost application changes
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -45,6 +49,8 @@ final class EventTapManager {
                 self?.currentWord = ""
                 self?.shiftKeyDownTime = nil
                 self?.lastShiftReleaseTime = nil
+                self?.fnPressTime = nil
+                self?.fnHasChord = false
             }
         }
     }
@@ -171,6 +177,8 @@ final class EventTapManager {
             currentWord = ""
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
+            fnPressTime = nil
+            fnHasChord = false
             return Unmanaged.passUnretained(event)
         }
         
@@ -180,9 +188,12 @@ final class EventTapManager {
         }
         
         if type == .keyDown {
-            // Any key pressed cancels solitary Shift tap
+            // Any key pressed cancels solitary Shift tap and marks Fn chord
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
+            if fnPressTime != nil {
+                fnHasChord = true
+            }
             handleKeyDown(event: event)
             return Unmanaged.passUnretained(event)
         }
@@ -191,10 +202,30 @@ final class EventTapManager {
     }
     
     private func handleFlagsChanged(event: CGEvent) {
+        let flags = event.flags
+        
+        // Instant Fn / Globe key handling
+        if FnSwitchManager.shared.isEnabled {
+            let isFnDown = flags.contains(.maskSecondaryFn)
+            if isFnDown {
+                if fnPressTime == nil {
+                    fnPressTime = Date()
+                    let otherMods = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+                    fnHasChord = !otherMods.isEmpty
+                }
+            } else if let downTime = fnPressTime {
+                let duration = Date().timeIntervalSince(downTime)
+                fnPressTime = nil
+                if !fnHasChord && duration < 0.50 {
+                    FnSwitchManager.shared.triggerInstantSwitch()
+                }
+                fnHasChord = false
+            }
+        }
+        
         guard doubleShiftEnabled else { return }
         
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
         // 0x38 = Left Shift, 0x3C = Right Shift
         guard keyCode == 0x38 || keyCode == 0x3C else {
             // Other modifier pressed (Cmd, Opt, Ctrl, Caps Lock, Fn) -> cancel Double Shift

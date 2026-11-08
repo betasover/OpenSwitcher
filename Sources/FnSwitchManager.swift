@@ -2,6 +2,7 @@ import Foundation
 import IOKit.hid
 import AppKit
 import Carbon
+import os.log
 
 private let fnPage: Int = 0xFF
 private let fnUsage: Int = 0x03
@@ -88,16 +89,13 @@ final class FnSwitchManager: ObservableObject {
         guard hidManager == nil else { return }
         
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        let devices: [[String: Int]] = [
-            [kIOHIDDeviceUsagePageKey: 0x01, kIOHIDDeviceUsageKey: 0x06],
-            [kIOHIDDeviceUsagePageKey: fnPage, kIOHIDDeviceUsageKey: fnUsage],
-        ]
+        // Match all devices so we do not accidentally filter out Apple Internal Keyboard
+        IOHIDManagerSetDeviceMatching(manager, nil)
+        
         let elements: [[String: Int]] = [
             [kIOHIDElementUsagePageKey: fnPage, kIOHIDElementUsageKey: fnUsage],
             [kIOHIDElementUsagePageKey: 0x07],
-            [kIOHIDElementUsagePageKey: 0x0C],
         ]
-        IOHIDManagerSetDeviceMatchingMultiple(manager, devices as CFArray)
         IOHIDManagerSetInputValueMatchingMultiple(manager, elements as CFArray)
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         
@@ -122,7 +120,6 @@ final class FnSwitchManager: ObservableObject {
     }
     
     func handleDeviceChanged() {
-        // Re-open if devices connected/disconnected (e.g. Magic Keyboard reconnect, sleep/wake)
         guard isEnabled, let manager = hidManager else { return }
         _ = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
@@ -156,13 +153,10 @@ final class FnSwitchManager: ObservableObject {
             return
         }
         
-        // If other key is pressed while Fn is down, mark as chord (e.g. Fn + Backspace, Fn + F-keys)
-        if fnDown && pressed {
-            if page == 0x07 && (0x04...0xE7).contains(usage) {
-                chord = true
-            } else if page == 0x0C {
-                chord = true
-            }
+        // If real keyboard key is pressed while Fn is down, mark as chord (e.g. Fn + Backspace, Fn + F-keys, Fn + arrows)
+        // Only page 0x07 with usage >= 4 represents actual keys (avoiding false flags on consumer pages)
+        if fnDown && pressed && page == 0x07 && usage >= 0x04 {
+            chord = true
         }
     }
     
@@ -171,6 +165,7 @@ final class FnSwitchManager: ObservableObject {
         guard now - lastSwitchTime > 0.18 else { return }
         lastSwitchTime = now
         
+        NSLog("OpenSwitcher: Instant Fn Switch triggered")
         LayoutManager.shared.toggleFast()
         SoundManager.shared.play()
     }
