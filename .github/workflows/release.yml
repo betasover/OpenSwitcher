@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Package DMG
+        run: |
+          chmod +x bundle.sh create_dmg.sh
+          ./create_dmg.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenSwitcher.dmg
+          name: OpenSwitcher ${{ github.ref_name }}
+          body: |
+            ## OpenSwitcher v1.0.0 — Native macOS Keyboard Layout Switcher
+            
+            ### Возможности:
+            - Автоматическое исправление раскладки (RU ↔ EN) на лету.
+            - Исправление слова или выделенного текста по Double Shift.
+            - Предотвращение случайного двойного Shift (Double Caps: `ПРивет` → `Привет`).
+            - Встроенный словарь IT-терминов (GitHub, Docker, Figma, Notion и др.) + самообучение.
+            - Черный список приложений-исключений.
+            - Выбор приятных системных звуков (Pop, Key Click, Bottle, Purr, Tink).
+            - Автозапуск при входе в систему.
+            
+            ### Установка:
+            1. Скачайте `OpenSwitcher.dmg`.
+            2. Откройте образ и перетащите `OpenSwitcher.app` в папку `Applications`.
+            3. Запустите приложение и предоставьте доступ в **Системные настройки → Универсальный доступ**.
+          generate_release_notes: false
