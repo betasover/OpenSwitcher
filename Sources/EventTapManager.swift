@@ -26,6 +26,7 @@ final class EventTapManager {
     // Typing tracking
     private var currentWord: String = ""
     private var lastCompletedWord: String = ""
+    private var lastTrailingDelimiter: String = ""
     private var isSimulating: Bool = false
     private var pendingEvents: [CGEvent] = []
     
@@ -47,6 +48,8 @@ final class EventTapManager {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.currentWord = ""
+                self?.lastCompletedWord = ""
+                self?.lastTrailingDelimiter = ""
                 self?.shiftKeyDownTime = nil
                 self?.lastShiftReleaseTime = nil
                 self?.fnPressTime = nil
@@ -175,6 +178,8 @@ final class EventTapManager {
         // Mouse click moves text cursor -> reset word buffer & pending shifts
         if type == .leftMouseDown || type == .rightMouseDown {
             currentWord = ""
+            lastCompletedWord = ""
+            lastTrailingDelimiter = ""
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
             fnPressTime = nil
@@ -270,6 +275,8 @@ final class EventTapManager {
         // Ignore key combos with Command / Control
         if flags.contains(.maskCommand) || flags.contains(.maskControl) {
             currentWord = ""
+            lastCompletedWord = ""
+            lastTrailingDelimiter = ""
             return
         }
         
@@ -279,6 +286,14 @@ final class EventTapManager {
         if keyCode == 0x33 {
             if !currentWord.isEmpty {
                 currentWord.removeLast()
+            } else if !lastTrailingDelimiter.isEmpty {
+                lastTrailingDelimiter.removeLast()
+                if lastTrailingDelimiter.isEmpty && !lastCompletedWord.isEmpty {
+                    currentWord = lastCompletedWord
+                    lastCompletedWord = ""
+                }
+            } else {
+                lastCompletedWord = ""
             }
             return
         }
@@ -286,24 +301,30 @@ final class EventTapManager {
         // Escape
         if keyCode == 0x35 {
             currentWord = ""
+            lastCompletedWord = ""
+            lastTrailingDelimiter = ""
             return
         }
         
         // Arrow keys (0x7B=Left, 0x7C=Right, 0x7D=Down, 0x7E=Up) & Home (0x73), End (0x77), PgUp (0x74), PgDn (0x79)
         if (0x7B...0x7E).contains(keyCode) || keyCode == 0x73 || keyCode == 0x77 || keyCode == 0x74 || keyCode == 0x79 {
             currentWord = ""
+            lastCompletedWord = ""
+            lastTrailingDelimiter = ""
             return
         }
         
         // Word delimiters: Space (0x31), Return (0x24), Tab (0x30)
         if keyCode == 0x31 || keyCode == 0x24 || keyCode == 0x30 {
+            let delim = (keyCode == 0x31 ? " " : (keyCode == 0x24 ? "\n" : "\t"))
             if !currentWord.isEmpty {
                 lastCompletedWord = currentWord
+                lastTrailingDelimiter = delim
                 let wordToCheck = currentWord
                 currentWord = ""
                 
                 if autoSwitchEnabled && !AppExceptions.shared.isFrontmostAppIgnored() {
-                    let trailing = (keyCode == 0x31 ? " " : "")
+                    let trailing = delim
                     
                     // Double Caps check: ПРивет -> Привет
                     if doubleCapsEnabled, let fixedCaps = LanguageDetector.detectDoubleCaps(word: wordToCheck) {
@@ -316,6 +337,8 @@ final class EventTapManager {
                         }
                     }
                 }
+            } else if !lastCompletedWord.isEmpty {
+                lastTrailingDelimiter.append(delim)
             }
             return
         }
@@ -333,6 +356,7 @@ final class EventTapManager {
             if let first = str.first, delimiters.contains(first) {
                 if !currentWord.isEmpty {
                     lastCompletedWord = currentWord
+                    lastTrailingDelimiter = str
                     let wordToCheck = currentWord
                     currentWord = ""
                     
@@ -347,9 +371,12 @@ final class EventTapManager {
                             }
                         }
                     }
+                } else if !lastCompletedWord.isEmpty {
+                    lastTrailingDelimiter.append(str)
                 }
             } else {
                 currentWord.append(str)
+                lastTrailingDelimiter = ""
             }
         }
     }
@@ -368,7 +395,7 @@ final class EventTapManager {
         // 2. Delete the word and trailing character
         let deleteCount = word.count + (trailingKey.isEmpty ? 0 : trailingKey.count)
         sendBackspace(count: deleteCount)
-        usleep(4_000)
+        usleep(20_000)
         
         // 3. Type converted word + trailing in fast chunks
         sendString(converted + convertedTrailing)
@@ -376,6 +403,9 @@ final class EventTapManager {
         
         isSimulating = false
         flushPendingEvents()
+        
+        lastCompletedWord = converted
+        lastTrailingDelimiter = convertedTrailing
     }
     
     private func fixDoubleCaps(word: String, fixed: String, trailingKey: String) {
@@ -383,12 +413,15 @@ final class EventTapManager {
         
         let deleteCount = word.count + (trailingKey.isEmpty ? 0 : trailingKey.count)
         sendBackspace(count: deleteCount)
-        usleep(4_000)
+        usleep(20_000)
         sendString(fixed + trailingKey)
         playSound()
         
         isSimulating = false
         flushPendingEvents()
+        
+        lastCompletedWord = fixed
+        lastTrailingDelimiter = trailingKey
     }
     
     func switchLastWordOrSelection() {
@@ -399,6 +432,8 @@ final class EventTapManager {
         }
         
         // 2. Fallback: replace current word or last completed word
+        let hadTrailing = currentWord.isEmpty && !lastCompletedWord.isEmpty
+        let trailing = hadTrailing ? lastTrailingDelimiter : ""
         let targetWord = currentWord.isEmpty ? lastCompletedWord : currentWord
         guard !targetWord.isEmpty else {
             LayoutManager.shared.toggle()
@@ -414,20 +449,29 @@ final class EventTapManager {
         }
         
         let converted = KeyboardMapper.shared.convert(targetWord, to: targetLang)
+        let convertedTrailing = trailing.isEmpty ? "" : KeyboardMapper.shared.convert(trailing, to: targetLang)
+        let deleteCount = targetWord.count + trailing.count
         
         isSimulating = true
         LayoutManager.shared.switchTo(targetLang)
         usleep(20_000)
-        sendBackspace(count: targetWord.count)
-        usleep(4_000)
-        sendString(converted)
+        sendBackspace(count: deleteCount)
+        usleep(20_000)
+        sendString(converted + convertedTrailing)
         playSound()
         
         isSimulating = false
         flushPendingEvents()
         
-        currentWord = ""
-        lastCompletedWord = converted
+        if hadTrailing {
+            currentWord = ""
+            lastCompletedWord = converted
+            lastTrailingDelimiter = convertedTrailing
+        } else {
+            currentWord = converted
+            lastCompletedWord = ""
+            lastTrailingDelimiter = ""
+        }
         UserDictionary.shared.learn(converted)
     }
     
@@ -482,12 +526,13 @@ final class EventTapManager {
     }
     
     private func simulateKeyCombo(virtualKey: CGKeyCode, flags: CGEventFlags) {
-        let src = CGEventSource(stateID: .combinedSessionState)
+        let src = CGEventSource(stateID: .hidSystemState)
         guard let down = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: true),
               let up = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: false) else { return }
         down.flags = flags
         up.flags = flags
         down.post(tap: .cgSessionEventTap)
+        usleep(1_500)
         up.post(tap: .cgSessionEventTap)
     }
     
@@ -496,20 +541,24 @@ final class EventTapManager {
     }
     
     private func sendBackspace(count: Int) {
-        let src = CGEventSource(stateID: .combinedSessionState)
+        guard count > 0 else { return }
+        let src = CGEventSource(stateID: .hidSystemState)
         for _ in 0..<count {
             guard let down = CGEvent(keyboardEventSource: src, virtualKey: 0x33, keyDown: true),
                   let up = CGEvent(keyboardEventSource: src, virtualKey: 0x33, keyDown: false) else { continue }
             
+            down.flags = []
+            up.flags = []
             down.post(tap: .cgSessionEventTap)
+            usleep(1_500)
             up.post(tap: .cgSessionEventTap)
-            usleep(2_500)
+            usleep(3_500)
         }
     }
     
     private func sendString(_ text: String) {
         guard !text.isEmpty else { return }
-        let src = CGEventSource(stateID: .combinedSessionState)
+        let src = CGEventSource(stateID: .hidSystemState)
         
         let utf16Array = Array(text.utf16)
         let chunkSize = 20
@@ -522,12 +571,15 @@ final class EventTapManager {
             guard let down = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false) else { break }
             
+            down.flags = []
+            up.flags = []
             down.keyboardSetUnicodeString(stringLength: count, unicodeString: &chunk)
             up.keyboardSetUnicodeString(stringLength: count, unicodeString: &chunk)
             
             down.post(tap: .cgSessionEventTap)
+            usleep(1_500)
             up.post(tap: .cgSessionEventTap)
-            usleep(2_500)
+            usleep(3_500)
             
             index += count
         }
