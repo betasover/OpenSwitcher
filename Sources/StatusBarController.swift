@@ -55,6 +55,12 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         dsItem.state = EventTapManager.shared.doubleShiftEnabled ? .on : .off
         menu.addItem(dsItem)
         
+        // Fast Fn / Globe toggle
+        let fnItem = NSMenuItem(title: "Мгновенный Fn / 🌐 (без задержки)", action: #selector(toggleFastFn), keyEquivalent: "")
+        fnItem.target = self
+        fnItem.state = FnSwitchManager.shared.isEnabled ? .on : .off
+        menu.addItem(fnItem)
+        
         // Sound toggle
         let soundEnabled = UserDefaults.standard.bool(forKey: "soundEnabled")
         let soundItem = NSMenuItem(title: "Звуковой сигнал", action: #selector(toggleSound), keyEquivalent: "")
@@ -153,6 +159,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         buildMenu()
     }
     
+    @objc private func toggleFastFn() {
+        FnSwitchManager.shared.isEnabled.toggle()
+        buildMenu()
+    }
+    
     @objc private func toggleSound() {
         let cur = UserDefaults.standard.bool(forKey: "soundEnabled")
         UserDefaults.standard.set(!cur, forKey: "soundEnabled")
@@ -183,6 +194,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
     
     @objc private func quitClicked() {
+        FnSwitchManager.shared.restoreSystemDefaultsOnQuit()
         NSApplication.shared.terminate(nil)
     }
 }

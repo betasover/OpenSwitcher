@@ -12,6 +12,17 @@ if !isTrusted {
 }
 
 let statusBar = StatusBarController()
+_ = FnSwitchManager.shared
+
+NotificationCenter.default.addObserver(
+    forName: NSApplication.willTerminateNotification,
+    object: nil,
+    queue: .main
+) { _ in
+    Task { @MainActor in
+        FnSwitchManager.shared.restoreSystemDefaultsOnQuit()
+    }
+}
 
 if !EventTapManager.shared.start() {
     print("OpenSwitcher: Failed to start CGEventTap. Please grant Accessibility permissions in System Settings -> Privacy & Security -> Accessibility.")

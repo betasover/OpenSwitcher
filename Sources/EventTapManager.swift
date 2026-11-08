@@ -33,6 +33,10 @@ final class EventTapManager {
     private var shiftKeyDownTime: Date?
     private var lastShiftReleaseTime: Date?
     
+    // Fn / Globe key tracking
+    private var fnKeyDownTime: Date?
+    private var fnChord: Bool = false
+    
     private init() {
         // Reset typing buffer when frontmost application changes
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -44,6 +48,8 @@ final class EventTapManager {
                 self?.currentWord = ""
                 self?.shiftKeyDownTime = nil
                 self?.lastShiftReleaseTime = nil
+                self?.fnKeyDownTime = nil
+                self?.fnChord = false
             }
         }
     }
@@ -150,11 +156,13 @@ final class EventTapManager {
             return Unmanaged.passUnretained(event)
         }
         
-        // Mouse click moves text cursor -> reset word buffer & pending shifts
+        // Mouse click moves text cursor -> reset word buffer & pending shifts/fn
         if type == .leftMouseDown || type == .rightMouseDown {
             currentWord = ""
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
+            fnKeyDownTime = nil
+            fnChord = false
             return Unmanaged.passUnretained(event)
         }
         
@@ -164,9 +172,12 @@ final class EventTapManager {
         }
         
         if type == .keyDown {
-            // Any key pressed cancels solitary Shift tap
+            // Any key pressed cancels solitary Shift tap and marks Fn chord
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
+            if fnKeyDownTime != nil {
+                fnChord = true
+            }
             handleKeyDown(event: event)
             return Unmanaged.passUnretained(event)
         }
@@ -175,18 +186,42 @@ final class EventTapManager {
     }
     
     private func handleFlagsChanged(event: CGEvent) {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        
+        // Fast Fn / Globe key handling
+        if FnSwitchManager.shared.isEnabled {
+            let isFnKey = (keyCode == 0x3F || flags.contains(.maskSecondaryFn))
+            if isFnKey {
+                if flags.contains(.maskSecondaryFn) {
+                    if fnKeyDownTime == nil {
+                        fnKeyDownTime = Date()
+                        let held = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+                        fnChord = !held.isEmpty
+                    }
+                } else {
+                    if let down = fnKeyDownTime {
+                        let duration = Date().timeIntervalSince(down)
+                        fnKeyDownTime = nil
+                        if !fnChord && duration < 0.40 {
+                            FnSwitchManager.shared.triggerInstantSwitch()
+                        }
+                    }
+                    fnChord = false
+                }
+            }
+        }
+        
         guard doubleShiftEnabled else { return }
         
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         // 0x38 = Left Shift, 0x3C = Right Shift
         guard keyCode == 0x38 || keyCode == 0x3C else {
-            // Other modifier pressed (Cmd, Opt, Ctrl, Caps Lock) -> cancel
+            // Other modifier pressed (Cmd, Opt, Ctrl, Caps Lock, Fn) -> cancel
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
             return
         }
         
-        let flags = event.flags
         let isShiftDown = flags.contains(.maskShift)
         let now = Date()
         

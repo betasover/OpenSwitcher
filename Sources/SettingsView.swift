@@ -10,6 +10,7 @@ struct SettingsView: View {
     @ObservedObject private var exceptions = AppExceptions.shared
     @ObservedObject private var userDict = UserDictionary.shared
     @ObservedObject private var soundManager = SoundManager.shared
+    @ObservedObject private var fnManager = FnSwitchManager.shared
     
     @State private var selectedException: String?
     @State private var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
@@ -56,6 +57,11 @@ struct SettingsView: View {
                 
                 Toggle("Исправление по двойному Shift", isOn: $doubleShiftEnabled)
                 Text("Два быстрых нажатия Shift исправляют последнее набранное слово или выделенный фрагмент текста.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Toggle("Мгновенное переключение по Fn / 🌐", isOn: $fnManager.isEnabled)
+                Text("Устраняет системную задержку macOS (300 мс) и всплывающее окно: переключает язык мгновенно при одиночном нажатии Fn/Globe.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 

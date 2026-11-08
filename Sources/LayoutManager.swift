@@ -58,16 +58,18 @@ final class LayoutManager {
     }
     
     @discardableResult
-    func switchTo(_ lang: Language) -> Bool {
+    func switchTo(_ lang: Language, waitForPropagate: Bool = true) -> Bool {
         refreshSources()
         let target = (lang == .russian ? russianSource : englishSource)
         guard let target = target else { return false }
         let res = TISSelectInputSource(target)
         
-        // Wait up to 50ms for layout to propagate in window server
-        for _ in 0..<5 {
-            usleep(10_000)
-            if currentLanguage() == lang { break }
+        if waitForPropagate {
+            // Wait up to 50ms for layout to propagate in window server
+            for _ in 0..<5 {
+                usleep(10_000)
+                if currentLanguage() == lang { break }
+            }
         }
         return res == noErr
     }
@@ -76,7 +78,15 @@ final class LayoutManager {
     func toggle() -> Language {
         let cur = currentLanguage()
         let next = cur.opposite
-        switchTo(next)
+        switchTo(next, waitForPropagate: true)
+        return next
+    }
+    
+    @discardableResult
+    func toggleFast() -> Language {
+        let cur = currentLanguage()
+        let next = cur.opposite
+        switchTo(next, waitForPropagate: false)
         return next
     }
 }
