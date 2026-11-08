@@ -81,19 +81,25 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             menu.addItem(appItem)
         }
         
-        // Exceptions list directly in the dropdown menu
+        // Exceptions submenu
         let exceptionsList = AppExceptions.shared.allExceptions
         if !exceptionsList.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-            let header = NSMenuItem(title: "Исключения (нажмите для удаления):", action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            menu.addItem(header)
+            let exceptionsParent = NSMenuItem(title: "Исключения (\(exceptionsList.count))", action: nil, keyEquivalent: "")
+            let exceptionsSubmenu = NSMenu(title: "Исключения")
+            
+            let subHeader = NSMenuItem(title: "Нажмите для удаления:", action: nil, keyEquivalent: "")
+            subHeader.isEnabled = false
+            exceptionsSubmenu.addItem(subHeader)
+            exceptionsSubmenu.addItem(NSMenuItem.separator())
             
             for bundle in exceptionsList {
                 let meta = AppMetadataResolver.resolve(bundleID: bundle)
                 let item = makeExceptionMenuItem(meta: meta, bundleId: bundle)
-                menu.addItem(item)
+                exceptionsSubmenu.addItem(item)
             }
+            
+            exceptionsParent.submenu = exceptionsSubmenu
+            menu.addItem(exceptionsParent)
         }
         
         menu.addItem(NSMenuItem.separator())
