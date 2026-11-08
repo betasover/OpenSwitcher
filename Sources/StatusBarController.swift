@@ -75,7 +75,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
            let name = front.localizedName,
            let bundleId = front.bundleIdentifier {
             let isIgnored = AppExceptions.shared.isIgnored(bundleID: bundleId)
-            let appTitle = isIgnored ? "✕  Удалить \(name) из исключений" : "Добавить \(name) в исключения"
+            let appTitle = isIgnored ? "Удалить \(name) из исключений" : "Добавить \(name) в исключения"
             let appItem = NSMenuItem(title: appTitle, action: #selector(toggleFrontmostAppException), keyEquivalent: "")
             appItem.target = self
             menu.addItem(appItem)
@@ -85,7 +85,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         let exceptionsList = AppExceptions.shared.allExceptions
         if !exceptionsList.isEmpty {
             menu.addItem(NSMenuItem.separator())
-            let header = NSMenuItem(title: "Исключения (нажмите ✕ для удаления):", action: nil, keyEquivalent: "")
+            let header = NSMenuItem(title: "Исключения (нажмите для удаления):", action: nil, keyEquivalent: "")
             header.isEnabled = false
             menu.addItem(header)
             
@@ -121,21 +121,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
     
     private func makeExceptionMenuItem(meta: AppMetadata, bundleId: String) -> NSMenuItem {
-        let item = NSMenuItem(title: "✕  \(meta.name)", action: #selector(removeExceptionClicked(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: meta.name, action: #selector(removeExceptionClicked(_:)), keyEquivalent: "")
         item.target = self
         item.representedObject = bundleId
         item.toolTip = "Удалить \(meta.name) из исключений"
-        
-        let attr = NSMutableAttributedString()
-        attr.append(NSAttributedString(string: "✕  ", attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .bold),
-            .foregroundColor: NSColor.systemRed
-        ]))
-        attr.append(NSAttributedString(string: meta.name, attributes: [
-            .font: NSFont.menuFont(ofSize: 13),
-            .foregroundColor: NSColor.labelColor
-        ]))
-        item.attributedTitle = attr
         
         if let iconCopy = meta.icon.copy() as? NSImage {
             iconCopy.size = NSSize(width: 16, height: 16)

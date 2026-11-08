@@ -192,24 +192,12 @@ struct SettingsView: View {
                                     .background(Color.secondary.opacity(0.12))
                                     .cornerRadius(4)
                             }
-                            
-                            // Cross [✕] button right inside the row
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    exceptions.remove(bundleID: bundleId)
-                                }
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 17))
-                                    .foregroundColor(Color.secondary.opacity(0.8))
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Удалить \(meta.name) из исключений")
                         }
                         .padding(.vertical, 3)
                         .tag(bundleId)
                     }
                 }
+                .onDeleteCommand { removeSelected() }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
                 .cornerRadius(6)
             }
