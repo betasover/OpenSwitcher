@@ -32,7 +32,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         
         // Header
-        let headerItem = NSMenuItem(title: "OpenSwitcher v1.0", action: nil, keyEquivalent: "")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.7"
+        let headerItem = NSMenuItem(title: "OpenSwitcher v\(version)", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
         menu.addItem(headerItem)
         

@@ -310,7 +310,7 @@ struct SettingsView: View {
                 .font(.title)
                 .fontWeight(.bold)
             
-            Text("Версия 1.0.0")
+            Text("Версия \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.7")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             

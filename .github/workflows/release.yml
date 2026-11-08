@@ -19,6 +19,8 @@ jobs:
       - name: Build and Package DMG
         run: |
           chmod +x bundle.sh create_dmg.sh
+          TAG_NAME="${{ github.ref_name }}"
+          export APP_VERSION="${TAG_NAME#v}"
           ./create_dmg.sh
 
       - name: Create GitHub Release
@@ -27,7 +29,7 @@ jobs:
           files: OpenSwitcher.dmg
           name: OpenSwitcher ${{ github.ref_name }}
           body: |
-            ## OpenSwitcher v1.0.0 — Native macOS Keyboard Layout Switcher
+            ## OpenSwitcher ${{ github.ref_name }} — Native macOS Keyboard Layout Switcher
             
             ### Возможности:
             - Автоматическое исправление раскладки (RU ↔ EN) на лету.
