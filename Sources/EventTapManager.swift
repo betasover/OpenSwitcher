@@ -32,10 +32,7 @@ final class EventTapManager {
     // Double Shift tracking
     private var shiftKeyDownTime: Date?
     private var lastShiftReleaseTime: Date?
-    
-    // Fn / Globe key tracking
-    private var fnKeyDownTime: Date?
-    private var fnChord: Bool = false
+    private var watchdogTimer: Timer?
     
     private init() {
         // Reset typing buffer when frontmost application changes
@@ -48,8 +45,6 @@ final class EventTapManager {
                 self?.currentWord = ""
                 self?.shiftKeyDownTime = nil
                 self?.lastShiftReleaseTime = nil
-                self?.fnKeyDownTime = nil
-                self?.fnChord = false
             }
         }
     }
@@ -65,7 +60,7 @@ final class EventTapManager {
         let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 if let refcon = refcon {
-                    MainActor.assumeIsolated {
+                    DispatchQueue.main.async {
                         let mgr = Unmanaged<EventTapManager>.fromOpaque(refcon).takeUnretainedValue()
                         mgr.enableTap()
                     }
@@ -102,7 +97,20 @@ final class EventTapManager {
         CGEvent.tapEnable(tap: tap, enable: true)
         permissionTimer?.invalidate()
         permissionTimer = nil
+        startWatchdog()
         return true
+    }
+    
+    private func startWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, let tap = self.eventTap else { return }
+                if !CGEvent.tapIsEnabled(tap: tap) {
+                    self.enableTap()
+                }
+            }
+        }
     }
     
     private func schedulePermissionPolling() {
@@ -122,6 +130,8 @@ final class EventTapManager {
     func stop() {
         permissionTimer?.invalidate()
         permissionTimer = nil
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             if let source = runLoopSource {
@@ -156,13 +166,11 @@ final class EventTapManager {
             return Unmanaged.passUnretained(event)
         }
         
-        // Mouse click moves text cursor -> reset word buffer & pending shifts/fn
+        // Mouse click moves text cursor -> reset word buffer & pending shifts
         if type == .leftMouseDown || type == .rightMouseDown {
             currentWord = ""
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
-            fnKeyDownTime = nil
-            fnChord = false
             return Unmanaged.passUnretained(event)
         }
         
@@ -172,12 +180,9 @@ final class EventTapManager {
         }
         
         if type == .keyDown {
-            // Any key pressed cancels solitary Shift tap and marks Fn chord
+            // Any key pressed cancels solitary Shift tap
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
-            if fnKeyDownTime != nil {
-                fnChord = true
-            }
             handleKeyDown(event: event)
             return Unmanaged.passUnretained(event)
         }
@@ -186,37 +191,13 @@ final class EventTapManager {
     }
     
     private func handleFlagsChanged(event: CGEvent) {
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        
-        // Fast Fn / Globe key handling
-        if FnSwitchManager.shared.isEnabled {
-            let isFnKey = (keyCode == 0x3F || flags.contains(.maskSecondaryFn))
-            if isFnKey {
-                if flags.contains(.maskSecondaryFn) {
-                    if fnKeyDownTime == nil {
-                        fnKeyDownTime = Date()
-                        let held = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
-                        fnChord = !held.isEmpty
-                    }
-                } else {
-                    if let down = fnKeyDownTime {
-                        let duration = Date().timeIntervalSince(down)
-                        fnKeyDownTime = nil
-                        if !fnChord && duration < 0.40 {
-                            FnSwitchManager.shared.triggerInstantSwitch()
-                        }
-                    }
-                    fnChord = false
-                }
-            }
-        }
-        
         guard doubleShiftEnabled else { return }
         
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
         // 0x38 = Left Shift, 0x3C = Right Shift
         guard keyCode == 0x38 || keyCode == 0x3C else {
-            // Other modifier pressed (Cmd, Opt, Ctrl, Caps Lock, Fn) -> cancel
+            // Other modifier pressed (Cmd, Opt, Ctrl, Caps Lock, Fn) -> cancel Double Shift
             shiftKeyDownTime = nil
             lastShiftReleaseTime = nil
             return

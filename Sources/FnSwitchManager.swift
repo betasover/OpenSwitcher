@@ -5,12 +5,26 @@ import Carbon
 
 private let fnPage: Int = 0xFF
 private let fnUsage: Int = 0x03
-private let tapLimit: CFAbsoluteTime = 0.40
+private let tapLimit: CFAbsoluteTime = 0.50
 
 private let valueCallback: IOHIDValueCallback = { context, _, _, value in
     guard let context = context else { return }
+    let element = IOHIDValueGetElement(value)
+    let page = Int(IOHIDElementGetUsagePage(element))
+    let usage = Int(IOHIDElementGetUsage(element))
+    let pressed = IOHIDValueGetIntegerValue(value) != 0
     let manager = Unmanaged<FnSwitchManager>.fromOpaque(context).takeUnretainedValue()
-    manager.handleHIDValue(value)
+    MainActor.assumeIsolated {
+        manager.handleValue(page: page, usage: usage, pressed: pressed)
+    }
+}
+
+private let deviceCallback: IOHIDDeviceCallback = { context, _, _, _ in
+    guard let context = context else { return }
+    let manager = Unmanaged<FnSwitchManager>.fromOpaque(context).takeUnretainedValue()
+    MainActor.assumeIsolated {
+        manager.handleDeviceChanged()
+    }
 }
 
 @MainActor
@@ -89,6 +103,8 @@ final class FnSwitchManager: ObservableObject {
         
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterInputValueCallback(manager, valueCallback, context)
+        IOHIDManagerRegisterDeviceMatchingCallback(manager, deviceCallback, context)
+        IOHIDManagerRegisterDeviceRemovalCallback(manager, deviceCallback, context)
         
         let openRes = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         if openRes == kIOReturnSuccess {
@@ -101,32 +117,37 @@ final class FnSwitchManager: ObservableObject {
         IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         hidManager = nil
+        fnDown = false
+        chord = false
     }
     
-    nonisolated func handleHIDValue(_ value: IOHIDValue) {
-        let element = IOHIDValueGetElement(value)
-        let page = Int(IOHIDElementGetUsagePage(element))
-        let usage = Int(IOHIDElementGetUsage(element))
-        let pressed = IOHIDValueGetIntegerValue(value) != 0
-        
-        Task { @MainActor in
-            self.processHID(page: page, usage: usage, pressed: pressed)
-        }
+    func handleDeviceChanged() {
+        // Re-open if devices connected/disconnected (e.g. Magic Keyboard reconnect, sleep/wake)
+        guard isEnabled, let manager = hidManager else { return }
+        _ = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
     
-    private func processHID(page: Int, usage: Int, pressed: Bool) {
+    func handleValue(page: Int, usage: Int, pressed: Bool) {
         guard isEnabled else { return }
+        
+        let now = CFAbsoluteTimeGetCurrent()
+        
+        // Auto-heal: If fnDown was stuck for more than 0.8s, force reset
+        if fnDown && (now - pressedAt > 0.80) {
+            fnDown = false
+            chord = false
+        }
         
         if page == fnPage && usage == fnUsage {
             if pressed {
                 fnDown = true
-                pressedAt = CFAbsoluteTimeGetCurrent()
+                pressedAt = now
                 let held = CGEventSource.flagsState(.combinedSessionState)
                     .intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
                 chord = !held.isEmpty
             } else {
-                let quick = (CFAbsoluteTimeGetCurrent() - pressedAt) < tapLimit
-                if fnDown && !chord && quick {
+                let duration = now - pressedAt
+                if fnDown && !chord && duration < tapLimit {
                     triggerInstantSwitch()
                 }
                 fnDown = false
@@ -137,13 +158,17 @@ final class FnSwitchManager: ObservableObject {
         
         // If other key is pressed while Fn is down, mark as chord (e.g. Fn + Backspace, Fn + F-keys)
         if fnDown && pressed {
-            chord = true
+            if page == 0x07 && (0x04...0xE7).contains(usage) {
+                chord = true
+            } else if page == 0x0C {
+                chord = true
+            }
         }
     }
     
     func triggerInstantSwitch() {
         let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastSwitchTime > 0.25 else { return }
+        guard now - lastSwitchTime > 0.18 else { return }
         lastSwitchTime = now
         
         LayoutManager.shared.toggleFast()

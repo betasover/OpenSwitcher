@@ -21,9 +21,25 @@ final class LayoutManager {
     
     private(set) var englishSource: TISInputSource?
     private(set) var russianSource: TISInputSource?
+    private var lastSwitchTime: CFAbsoluteTime = 0
+    private var lastTargetLanguage: Language?
     
     init() {
         refreshSources()
+        let name = Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String)
+        DistributedNotificationCenter.default().addObserver(
+            forName: name,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let cur = self.currentLanguage()
+                if cur != .other {
+                    self.lastTargetLanguage = cur
+                }
+            }
+        }
     }
     
     func refreshSources() {
@@ -63,6 +79,8 @@ final class LayoutManager {
         let target = (lang == .russian ? russianSource : englishSource)
         guard let target = target else { return false }
         let res = TISSelectInputSource(target)
+        lastTargetLanguage = lang
+        lastSwitchTime = CFAbsoluteTimeGetCurrent()
         
         if waitForPropagate {
             // Wait up to 50ms for layout to propagate in window server
@@ -84,10 +102,18 @@ final class LayoutManager {
     
     @discardableResult
     func toggleFast() -> Language {
+        let now = CFAbsoluteTimeGetCurrent()
         let cur = currentLanguage()
-        let next = cur.opposite
+        let next: Language
+        // If we switched recently (within 0.6s), alternate from lastTargetLanguage
+        // to prevent getting stuck if macOS hasn't updated its input source cache yet!
+        if let lastTarget = lastTargetLanguage, now - lastSwitchTime < 0.60 {
+            next = lastTarget.opposite
+        } else {
+            next = (cur == .other) ? (lastTargetLanguage?.opposite ?? .english) : cur.opposite
+        }
+        
         switchTo(next, waitForPropagate: false)
         return next
     }
 }
-
