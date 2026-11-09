@@ -13,6 +13,9 @@ final class UserDictionary: ObservableObject {
     private let builtInTechWords: Set<String> = [
         "github", "gitlab", "docker", "figma", "notion", "telegram", "slack",
         "google", "youtube", "chatgpt", "openai", "gemini", "anthropic", "claude",
+        "yandex", "yandex.ru", "яндекс", "mail", "mail.ru", "маил", "майл", "мейл",
+        "vk", "вк", "ozon", "озон", "wildberries", "вайлдберриз", "sber", "сбер",
+        "tinkoff", "тинькофф", "avito", "авито", "kinopoisk", "кинопоиск", "rutube", "рутуб",
         "python", "swiftui", "macos", "ios", "android", "linux", "ubuntu",
         "frontend", "backend", "devops", "kubernetes", "k8s", "vscode", "xcode",
         "jira", "confluence", "trello", "asana", "miro", "linear",
@@ -36,10 +39,11 @@ final class UserDictionary: ObservableObject {
     }
     
     private func rebuildSets() {
-        allEnglishWordsSet = builtInTechWords
+        allEnglishWordsSet = []
         allRussianWordsSet = []
         
-        for w in userWords {
+        let allWords = builtInTechWords.union(userWords)
+        for w in allWords {
             let lower = w.lowercased()
             if lower.contains(where: { ("\u{0400}"..."\u{04FF}").contains($0) }) {
                 allRussianWordsSet.insert(lower)

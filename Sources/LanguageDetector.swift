@@ -18,7 +18,8 @@ struct LanguageDetector {
         "bp", "e;t", "ye", "dtlm", "tcnm", "kb", "vyt", "nt,t", "tve", "tq", "yf",
         "yfc", "dfc", "b[", "cvjnhb", "ltkfq", "pyf.", "pyftn", "vj;tn", "vj;yj",
         "yflj", "ye;yj", "ytkmpz", "gjikb", "gjtv", "xtkjdtr", "k.lb", "hfp", "ldf",
-        "ghjdthrf", "hf,jnf", "gthtrk.xtybt", "zpsr", "gfhjkm", "kjuby", "cfqn", "gjxnf"
+        "ghjdthrf", "hf,jnf", "gthtrk.xtybt", "zpsr", "gfhjkm", "kjuby", "cfqn", "gjxnf",
+        "zyltrc", "vfbk", "vfqk", "vtqk", "fdbnj", "jpfy", "c,th"
     ]
     
     // Frequent English words in ЙЦУКЕН
@@ -31,7 +32,8 @@ struct LanguageDetector {
         "ыудуксе", "ыефке", "ыщгкс", "ыщьу", "ыуе", "ыекштп", "ыефегы",
         "ьфлу", "ьщку", "ьфт", "ьфз", "ьщвгду", "ьувшф", "ьуыыфпу",
         "йгукн", "сфт", "сщгдв", "фищге", "дшлу", "ешьу", "ящщь", "пуе", "зщые",
-        "здуфыу", "цфке", "иге", "тще", "нуы", "тщ", "фтв", "щк", "ыщ", "ша"
+        "здуфыу", "цфке", "иге", "тще", "нуы", "тщ", "фтв", "щк", "ыщ", "ша",
+        "нфтвуч", "ьфшд", "нфтвучюкг", "ьфшдюкг"
     ]
     
     private static let ruPrefixesInEn = [
