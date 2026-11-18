@@ -5,7 +5,6 @@ struct SettingsView: View {
     @AppStorage("autoSwitch") private var autoSwitchEnabled: Bool = true
     @AppStorage("doubleShift") private var doubleShiftEnabled: Bool = true
     @AppStorage("doubleCaps") private var doubleCapsEnabled: Bool = true
-    @AppStorage("soundEnabled") private var soundEnabled: Bool = false
     @ObservedObject private var launchAtLogin = LaunchAtLogin.shared
     @ObservedObject private var exceptions = AppExceptions.shared
     @ObservedObject private var userDict = UserDictionary.shared
@@ -70,12 +69,12 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
-                Toggle("Звуковой сигнал при исправлении", isOn: $soundEnabled)
+                Toggle("Звуковой сигнал при исправлении", isOn: $soundManager.isSoundEnabled)
                 Text("Воспроизводит мягкий щелчок при автоисправлении слова или по двойному Shift.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
-                if soundEnabled {
+                if soundManager.isSoundEnabled {
                     HStack(spacing: 12) {
                         Picker("Мелодия", selection: $soundManager.currentSoundType) {
                             ForEach(SwitcherSound.allCases) { sound in
@@ -131,6 +130,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
+            guard !isAccessibilityTrusted else { return }
             isAccessibilityTrusted = AXIsProcessTrusted()
         }
     }
@@ -310,7 +310,7 @@ struct SettingsView: View {
                 .font(.title)
                 .fontWeight(.bold)
             
-            Text("Версия \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.7")")
+            Text("Версия \(AppConstants.appVersion)")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             

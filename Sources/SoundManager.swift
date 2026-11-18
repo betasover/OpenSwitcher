@@ -46,6 +46,10 @@ final class SoundManager: ObservableObject {
     private let soundKey = "selectedSound"
     private var cachedSound: NSSound?
     
+    @Published var isSoundEnabled: Bool {
+        didSet { UserDefaults.standard.set(isSoundEnabled, forKey: "soundEnabled") }
+    }
+    
     @Published var currentSoundType: SwitcherSound {
         didSet {
             UserDefaults.standard.set(currentSoundType.rawValue, forKey: soundKey)
@@ -57,11 +61,12 @@ final class SoundManager: ObservableObject {
         let raw = UserDefaults.standard.string(forKey: soundKey) ?? SwitcherSound.pop.rawValue
         let type = SwitcherSound(rawValue: raw) ?? .pop
         self.currentSoundType = type
+        self.isSoundEnabled = UserDefaults.standard.bool(forKey: "soundEnabled")
         self.cachedSound = type.createSound()
     }
     
     func play() {
-        guard UserDefaults.standard.bool(forKey: "soundEnabled") else { return }
+        guard isSoundEnabled else { return }
         if cachedSound == nil {
             cachedSound = currentSoundType.createSound()
         }

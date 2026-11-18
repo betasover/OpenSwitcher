@@ -34,6 +34,7 @@ final class LayoutManager {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
+                self.refreshSources()
                 let cur = self.currentLanguage()
                 if cur != .other {
                     self.lastTargetLanguage = cur
@@ -75,7 +76,6 @@ final class LayoutManager {
     
     @discardableResult
     func switchTo(_ lang: Language, waitForPropagate: Bool = true) -> Bool {
-        refreshSources()
         let target = (lang == .russian ? russianSource : englishSource)
         guard let target = target else { return false }
         let res = TISSelectInputSource(target)

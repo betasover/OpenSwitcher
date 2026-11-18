@@ -29,6 +29,8 @@ final class EventTapManager {
     private var lastTrailingDelimiter: String = ""
     private var isSimulating: Bool = false
     private var pendingEvents: [CGEvent] = []
+    private let maxPendingEvents = 50
+    private let simulationQueue = DispatchQueue(label: "openswitcher.simulation", qos: .userInteractive)
     
     // Double Shift tracking
     private var shiftKeyDownTime: Date?
@@ -167,7 +169,7 @@ final class EventTapManager {
         if isSimulating {
             // Buffer user keystrokes during retyping to prevent collision / double letters
             if type == .keyDown {
-                if let cp = event.copy() {
+                if pendingEvents.count < maxPendingEvents, let cp = event.copy() {
                     pendingEvents.append(cp)
                 }
                 return nil
@@ -255,9 +257,7 @@ final class EventTapManager {
                     if let lastRelease = lastShiftReleaseTime, now.timeIntervalSince(lastRelease) < 0.35 {
                         // Double Shift detected!
                         lastShiftReleaseTime = nil
-                        DispatchQueue.main.async { [weak self] in
-                            self?.switchLastWordOrSelection()
-                        }
+                        switchLastWordOrSelection()
                     } else {
                         lastShiftReleaseTime = now
                     }
@@ -328,13 +328,9 @@ final class EventTapManager {
                     
                     // Double Caps check: ПРивет -> Привет
                     if doubleCapsEnabled, let fixedCaps = LanguageDetector.detectDoubleCaps(word: wordToCheck) {
-                        DispatchQueue.main.async { [weak self] in
-                            self?.fixDoubleCaps(word: wordToCheck, fixed: fixedCaps, trailingKey: trailing)
-                        }
+                        fixDoubleCaps(word: wordToCheck, fixed: fixedCaps, trailingKey: trailing)
                     } else if let targetLang = LanguageDetector.detectMismatch(word: wordToCheck) {
-                        DispatchQueue.main.async { [weak self] in
-                            self?.autoReplace(word: wordToCheck, targetLanguage: targetLang, trailingKey: trailing)
-                        }
+                        autoReplace(word: wordToCheck, targetLanguage: targetLang, trailingKey: trailing)
                     }
                 }
             } else if !lastCompletedWord.isEmpty {
@@ -352,8 +348,14 @@ final class EventTapManager {
             let str = String(utf16CodeUnits: buffer, count: length)
             
             // Punctuation delimiters: . , ! ? ; : ( ) \n \t
+            // Characters that map to Cyrillic letters (e.g. ; -> ж) are NOT delimiters
+            // when the buffer is pure Latin – the user is likely typing Russian on EN layout.
             let delimiters: Set<Character> = [".", ",", "!", "?", ";", ":", "(", ")", "\n", "\t"]
-            if let first = str.first, delimiters.contains(first) {
+            let isMappedCyrillic = !currentWord.isEmpty
+                && currentWord.allSatisfy({ $0.isASCII && $0.isLetter })
+                && KeyboardMapper.shared.convertToRussian(str).first?.isLetter == true
+                && str.first.map({ !$0.isLetter }) == true
+            if let first = str.first, delimiters.contains(first) && !isMappedCyrillic {
                 if !currentWord.isEmpty {
                     lastCompletedWord = currentWord
                     lastTrailingDelimiter = str
@@ -362,13 +364,9 @@ final class EventTapManager {
                     
                     if autoSwitchEnabled && !AppExceptions.shared.isFrontmostAppIgnored() {
                         if doubleCapsEnabled, let fixedCaps = LanguageDetector.detectDoubleCaps(word: wordToCheck) {
-                            DispatchQueue.main.async { [weak self] in
-                                self?.fixDoubleCaps(word: wordToCheck, fixed: fixedCaps, trailingKey: str)
-                            }
+                            fixDoubleCaps(word: wordToCheck, fixed: fixedCaps, trailingKey: str)
                         } else if let targetLang = LanguageDetector.detectMismatch(word: wordToCheck) {
-                            DispatchQueue.main.async { [weak self] in
-                                self?.autoReplace(word: wordToCheck, targetLanguage: targetLang, trailingKey: str)
-                            }
+                            autoReplace(word: wordToCheck, targetLanguage: targetLang, trailingKey: str)
                         }
                     }
                 } else if !lastCompletedWord.isEmpty {
@@ -387,41 +385,47 @@ final class EventTapManager {
         let convertedTrailing = trailingKey.isEmpty ? "" : KeyboardMapper.shared.convert(trailingKey, to: targetLanguage)
         
         isSimulating = true
-        
-        // 1. Switch system layout
-        LayoutManager.shared.switchTo(targetLanguage)
-        usleep(20_000)
-        
-        // 2. Delete the word and trailing character
         let deleteCount = word.count + (trailingKey.isEmpty ? 0 : trailingKey.count)
-        sendBackspace(count: deleteCount)
-        usleep(20_000)
         
-        // 3. Type converted word + trailing in fast chunks
-        sendString(converted + convertedTrailing)
-        playSound()
-        
-        isSimulating = false
-        flushPendingEvents()
-        
-        lastCompletedWord = converted
-        lastTrailingDelimiter = convertedTrailing
+        simulationQueue.async { [weak self] in
+            guard let self = self else { return }
+            // 1. Switch system layout (Carbon TIS must run on main)
+            DispatchQueue.main.sync { _ = LayoutManager.shared.switchTo(targetLanguage) }
+            usleep(20_000)
+            
+            // 2. Delete the word and trailing character
+            self.sendBackspace(count: deleteCount)
+            usleep(20_000)
+            
+            // 3. Type converted word + trailing in fast chunks
+            self.sendString(converted + convertedTrailing)
+            
+            DispatchQueue.main.async { [weak self] in
+                self?.playSound()
+                self?.lastCompletedWord = converted
+                self?.lastTrailingDelimiter = convertedTrailing
+                self?.flushPendingEvents()
+            }
+        }
     }
     
     private func fixDoubleCaps(word: String, fixed: String, trailingKey: String) {
         isSimulating = true
-        
         let deleteCount = word.count + (trailingKey.isEmpty ? 0 : trailingKey.count)
-        sendBackspace(count: deleteCount)
-        usleep(20_000)
-        sendString(fixed + trailingKey)
-        playSound()
         
-        isSimulating = false
-        flushPendingEvents()
-        
-        lastCompletedWord = fixed
-        lastTrailingDelimiter = trailingKey
+        simulationQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.sendBackspace(count: deleteCount)
+            usleep(20_000)
+            self.sendString(fixed + trailingKey)
+            
+            DispatchQueue.main.async { [weak self] in
+                self?.playSound()
+                self?.lastCompletedWord = fixed
+                self?.lastTrailingDelimiter = trailingKey
+                self?.flushPendingEvents()
+            }
+        }
     }
     
     func switchLastWordOrSelection() {
@@ -453,26 +457,31 @@ final class EventTapManager {
         let deleteCount = targetWord.count + trailing.count
         
         isSimulating = true
-        LayoutManager.shared.switchTo(targetLang)
-        usleep(20_000)
-        sendBackspace(count: deleteCount)
-        usleep(20_000)
-        sendString(converted + convertedTrailing)
-        playSound()
         
-        isSimulating = false
-        flushPendingEvents()
-        
-        if hadTrailing {
-            currentWord = ""
-            lastCompletedWord = converted
-            lastTrailingDelimiter = convertedTrailing
-        } else {
-            currentWord = converted
-            lastCompletedWord = ""
-            lastTrailingDelimiter = ""
+        simulationQueue.async { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.sync { _ = LayoutManager.shared.switchTo(targetLang) }
+            usleep(20_000)
+            self.sendBackspace(count: deleteCount)
+            usleep(20_000)
+            self.sendString(converted + convertedTrailing)
+            
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.playSound()
+                if hadTrailing {
+                    self.currentWord = ""
+                    self.lastCompletedWord = converted
+                    self.lastTrailingDelimiter = convertedTrailing
+                } else {
+                    self.currentWord = converted
+                    self.lastCompletedWord = ""
+                    self.lastTrailingDelimiter = ""
+                }
+                UserDictionary.shared.learn(converted)
+                self.flushPendingEvents()
+            }
         }
-        UserDictionary.shared.learn(converted)
     }
     
     private func replaceAccessibilitySelection() -> Bool {
@@ -516,10 +525,14 @@ final class EventTapManager {
         simulateKeyCombo(virtualKey: 0x09, flags: .maskCommand) // 'v'
         UserDictionary.shared.learn(converted)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if let old = oldString {
-                pasteboard.clearContents()
-                pasteboard.setString(old, forType: .string)
+        // Restore pasteboard only if no one else has changed it since our paste
+        if let old = oldString {
+            let expectedChangeCount = pasteboard.changeCount + 1  // after our paste posts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if pasteboard.changeCount == expectedChangeCount {
+                    pasteboard.clearContents()
+                    pasteboard.setString(old, forType: .string)
+                }
             }
         }
         return true
@@ -540,7 +553,8 @@ final class EventTapManager {
         SoundManager.shared.play()
     }
     
-    private func sendBackspace(count: Int) {
+    // These methods only post CGEvents — no @MainActor state touched — safe to call from simulationQueue
+    private nonisolated func sendBackspace(count: Int) {
         guard count > 0 else { return }
         let src = CGEventSource(stateID: .hidSystemState)
         for _ in 0..<count {
@@ -556,7 +570,7 @@ final class EventTapManager {
         }
     }
     
-    private func sendString(_ text: String) {
+    private nonisolated func sendString(_ text: String) {
         guard !text.isEmpty else { return }
         let src = CGEventSource(stateID: .hidSystemState)
         
@@ -586,6 +600,7 @@ final class EventTapManager {
     }
     
     private func flushPendingEvents() {
+        isSimulating = false
         guard !pendingEvents.isEmpty else { return }
         let events = pendingEvents
         pendingEvents.removeAll()

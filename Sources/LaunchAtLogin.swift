@@ -12,9 +12,7 @@ final class LaunchAtLogin: ObservableObject {
     }
     
     func refresh() {
-        if #available(macOS 13.0, *) {
-            isEnabled = (SMAppService.mainApp.status == .enabled)
-        }
+        isEnabled = (SMAppService.mainApp.status == .enabled)
     }
     
     func toggle() {
@@ -22,22 +20,20 @@ final class LaunchAtLogin: ObservableObject {
     }
     
     func set(_ enable: Bool) {
-        if #available(macOS 13.0, *) {
-            do {
-                if enable {
-                    if SMAppService.mainApp.status != .enabled {
-                        try SMAppService.mainApp.register()
-                    }
-                } else {
-                    if SMAppService.mainApp.status == .enabled {
-                        try SMAppService.mainApp.unregister()
-                    }
+        do {
+            if enable {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
                 }
-            } catch {
-                print("LaunchAtLogin change error: \(error)")
+            } else {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                }
             }
-            refresh()
+        } catch {
+            print("LaunchAtLogin change error: \(error)")
         }
+        refresh()
     }
 }
 

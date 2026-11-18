@@ -15,6 +15,7 @@ struct KeyboardMapper {
             enToRu[e] = r
             ruToEn[r] = e
         }
+        assert(enChars.count == ruChars.count, "KeyboardMapper: enChars (\(enChars.count)) and ruChars (\(ruChars.count)) must have equal length")
     }
     
     func convertToRussian(_ text: String) -> String {

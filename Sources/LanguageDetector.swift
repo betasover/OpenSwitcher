@@ -188,7 +188,7 @@ struct LanguageDetector {
         guard chars[0].isUppercase && chars[1].isUppercase else { return nil }
         guard chars[2].isLowercase else { return nil }
         for c in chars.dropFirst(2) {
-            if c.isLetter && !c.isLowercase { return nil }
+            if c.isUppercase { return nil }
         }
         let fixed = String(chars[0]) + String(chars[1]).lowercased() + String(chars.dropFirst(2))
         return fixed

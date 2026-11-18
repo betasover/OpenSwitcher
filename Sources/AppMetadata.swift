@@ -1,5 +1,9 @@
 import AppKit
 
+enum AppConstants {
+    static let appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.7"
+}
+
 struct AppMetadata: Identifiable {
     let id: String
     let name: String

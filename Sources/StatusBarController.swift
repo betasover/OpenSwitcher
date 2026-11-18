@@ -32,7 +32,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         
         // Header
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.7"
+        let version = AppConstants.appVersion
         let headerItem = NSMenuItem(title: "OpenSwitcher v\(version)", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
         menu.addItem(headerItem)
@@ -63,7 +63,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(fnItem)
         
         // Sound toggle
-        let soundEnabled = UserDefaults.standard.bool(forKey: "soundEnabled")
+        let soundEnabled = SoundManager.shared.isSoundEnabled
         let soundItem = NSMenuItem(title: "Звуковой сигнал", action: #selector(toggleSound), keyEquivalent: "")
         soundItem.target = self
         soundItem.state = soundEnabled ? .on : .off
@@ -161,8 +161,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
     
     @objc private func toggleSound() {
-        let cur = UserDefaults.standard.bool(forKey: "soundEnabled")
-        UserDefaults.standard.set(!cur, forKey: "soundEnabled")
+        SoundManager.shared.isSoundEnabled.toggle()
         buildMenu()
     }
     
