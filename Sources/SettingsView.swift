@@ -37,8 +37,7 @@ struct SettingsView: View {
                     Label("О программе", systemImage: "info.circle")
                 }
         }
-        .frame(width: 520, height: 430)
-        .padding()
+        .frame(width: 520, height: 500)
         .onAppear {
             isAccessibilityTrusted = AXIsProcessTrusted()
             launchAtLogin.refresh()
@@ -219,6 +218,7 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
         }
+        .padding()
     }
     
     // MARK: - Dictionary Tab
@@ -294,6 +294,7 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
         }
+        .padding()
     }
     
     // MARK: - About Tab
